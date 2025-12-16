@@ -1,0 +1,16 @@
+name: 'Sample Action'
+description: 'A sample GitHub Action template'
+
+inputs:
+  example-input:
+    description: 'An example input parameter'
+    required: true
+    default: 'default value'
+
+outputs:
+  example-output:
+    description: 'An example output value'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
