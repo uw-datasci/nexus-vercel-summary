@@ -14,13 +14,13 @@ Add this to your workflow after your deployment steps:
       [
         {
           "name": "Frontend",
-          "status": "successful",
-          "url": "https://frontend.vercel.app"
+          "status": "${{ needs.deploy-all.outputs.frontend-status == 'success' && 'successful' || 'failed' }}",
+          "url": "${{ needs.deploy-all.outputs.frontend-url }}"
         },
         {
           "name": "Backend",
-          "status": "successful",
-          "url": "https://backend.vercel.app"
+          "status": "${{ needs.deploy-all.outputs.backend-status == 'success' && 'successful' || 'failed' }}",
+          "url": "${{ needs.deploy-all.outputs.backend-url }}"
         }
       ]
 ```
