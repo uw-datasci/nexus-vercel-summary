@@ -13,14 +13,14 @@ Add this to your workflow after your deployment steps:
     deployments: |
       [
         {
-          "name": "Frontend",
-          "status": "${{ needs.deploy-all.outputs.frontend-status == 'success' && 'successful' || 'failed' }}",
-          "url": "${{ needs.deploy-all.outputs.frontend-url }}"
+          "name": "app1",
+          "status": "${{ needs.deploy-all.outputs.app1-status == 'success' && 'successful' || 'failed' }}",
+          "url": "${{ needs.deploy-all.outputs.app1-url }}"
         },
         {
-          "name": "Backend",
-          "status": "${{ needs.deploy-all.outputs.backend-status == 'success' && 'successful' || 'failed' }}",
-          "url": "${{ needs.deploy-all.outputs.backend-url }}"
+          "name": "app2",
+          "status": "${{ needs.deploy-all.outputs.app2-status == 'success' && 'successful' || 'failed' }}",
+          "url": "${{ needs.deploy-all.outputs.app2-url }}"
         }
       ]
 ```
@@ -50,29 +50,6 @@ Each deployment in the array needs:
 - `name` (required): Display name
 - `status` (required): `building`, `failed`, or `successful`
 - `url` (optional): Deployment URL
-
-## Examples
-
-### Different Statuses
-
-```yaml
-deployments: |
-  [
-    {
-      "name": "Frontend",
-      "status": "successful",
-      "url": "https://frontend.vercel.app"
-    },
-    {
-      "name": "Backend",
-      "status": "building"
-    },
-    {
-      "name": "API",
-      "status": "failed"
-    }
-  ]
-```
 
 ### Production Environment
 
