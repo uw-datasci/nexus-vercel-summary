@@ -1,15 +1,30 @@
-name: 'Sample Action'
-description: 'A sample GitHub Action template'
+name: 'Nexus Vercel Summary'
+description: 'Comments on PRs with Vercel deployment status (building, failed, or successful)'
+author: 'Nexus'
+branding:
+  icon: 'check-circle'
+  color: 'purple'
 
 inputs:
-  example-input:
-    description: 'An example input parameter'
+  github-token:
+    description: 'GitHub token for commenting on PRs'
     required: true
-    default: 'default value'
-
-outputs:
-  example-output:
-    description: 'An example output value'
+  status:
+    description: 'Deployment status: building, failed, or successful'
+    required: true
+  deployment-url:
+    description: 'The URL of the deployed application (required for successful status)'
+    required: false
+  environment:
+    description: 'Deployment environment: production or preview'
+    required: false
+    default: 'preview'
+  project-name:
+    description: 'Name of the project being deployed'
+    required: false
+  commit-sha:
+    description: 'Commit SHA for the deployment'
+    required: false
 
 runs:
   using: 'node20'

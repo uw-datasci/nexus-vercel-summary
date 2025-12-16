@@ -1,148 +1,255 @@
-# Sample GitHub Action
+# Nexus Vercel Summary
 
-A template repository for creating GitHub Actions using Node.js.
+A GitHub Action that comments on pull requests with Vercel deployment status updates, similar to the official Vercel bot. Supports building, failed, and successful deployment states.
 
-## Quick Start
+## Features
 
-1. **Clone this template** or use it to create a new repository
-2. **Customize `action.yml`** with your action's metadata, inputs, and outputs
-3. **Implement your logic** in `src/index.js`
-4. **Build the action** to bundle it into `dist/`
-5. **Test and publish** your action
+- 🔄 **Real-time Updates**: Comments are updated in-place rather than creating multiple comments
+- 🎨 **Vercel-style Formatting**: Clean, professional comments that match Vercel's UI
+- 🚀 **Production & Preview**: Supports both production and preview deployments
+- 🔗 **Direct Links**: Includes clickable deployment URLs when successful
+- ✅ **Status Indicators**: Clear visual indicators for building, failed, and successful states
 
-## Project Structure
+## Usage
 
-```
-.
-├── action.yml           # Action metadata and interface definition
-├── src/
-│   ├── index.js         # Main entry point for your action
-│   └── report.test.js   # Test files
-├── dist/                # Bundled code (generated, do not edit directly)
-├── package.json         # Dependencies and scripts
-└── README.md            # This file
-```
-
-## Implementation Guide
-
-### 1. Define Your Action (`action.yml`)
-
-The `action.yml` file defines your action's interface:
+### Basic Example
 
 ```yaml
-name: 'Your Action Name'
-description: 'What your action does'
-inputs:
-  input-name:
-    description: 'Description of the input'
-    required: true
-    default: 'default value'
-outputs:
-  output-name:
-    description: 'Description of the output'
-runs:
-  using: 'node20'
-  main: 'dist/index.js'
+name: Deploy and Comment
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Comment - Building
+        uses: your-org/nexus-vercel-summary@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          status: building
+          environment: preview
+
+      - name: Deploy to Vercel
+        id: deploy
+        run: |
+          # Your deployment logic here
+          DEPLOYMENT_URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
+          echo "url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+
+      - name: Comment - Successful
+        if: success()
+        uses: your-org/nexus-vercel-summary@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          status: successful
+          deployment-url: ${{ steps.deploy.outputs.url }}
+          environment: preview
+
+      - name: Comment - Failed
+        if: failure()
+        uses: your-org/nexus-vercel-summary@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          status: failed
+          environment: preview
 ```
 
-### 2. Implement Your Logic (`src/index.js`)
+### Integration with Reusable Workflow
 
-Use the `@actions/core` and `@actions/github` packages:
+Here's how to integrate with your existing Vercel deployment workflow:
 
-```javascript
-import { getInput, setOutput, setFailed } from "@actions/core";
-import { context } from "@actions/github";
+```yaml
+name: Deploy with Status Comments
 
-async function run() {
-  try {
-    // Get inputs
-    const myInput = getInput("input-name", { required: true });
-    
-    // Your logic here
-    const result = processInput(myInput);
-    
-    // Set outputs
-    setOutput("output-name", result);
-  } catch (error) {
-    setFailed(`Action failed: ${error.message}`);
-  }
-}
+on:
+  pull_request:
+    branches: [main]
 
-await run();
+jobs:
+  comment-building:
+    name: Comment - Building
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Post building status
+        uses: your-org/nexus-vercel-summary@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          status: building
+          environment: preview
+          project-name: My Awesome App
+
+  deploy:
+    name: Deploy to Vercel
+    needs: comment-building
+    uses: ./.github/workflows/vercel-deploy.yml
+    with:
+      node-version: 20
+      pnpm-version: "9.0.0"
+      is-prod: false
+      infisical-project-slug: my-project
+      infisical-secret-path: /app
+    secrets:
+      INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
+      INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+  comment-result:
+    name: Comment - Result
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: always() && github.event_name == 'pull_request'
+    steps:
+      - name: Post successful status
+        if: needs.deploy.result == 'success'
+        uses: your-org/nexus-vercel-summary@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          status: successful
+          deployment-url: ${{ needs.deploy.outputs.deployment-url }}
+          environment: preview
+          project-name: My Awesome App
+
+      - name: Post failed status
+        if: needs.deploy.result == 'failure'
+        uses: your-org/nexus-vercel-summary@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          status: failed
+          environment: preview
+          project-name: My Awesome App
 ```
 
-### 3. Install Dependencies
+### Production Deployment Example
+
+```yaml
+name: Production Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy-production:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ... your deployment steps ...
+
+      - name: Comment on merged PR
+        uses: your-org/nexus-vercel-summary@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          status: successful
+          deployment-url: https://your-app.com
+          environment: production
+          project-name: My Production App
+```
+
+## Inputs
+
+| Input            | Description                                                            | Required                     | Default            |
+| ---------------- | ---------------------------------------------------------------------- | ---------------------------- | ------------------ |
+| `github-token`   | GitHub token for commenting on PRs (use `${{ secrets.GITHUB_TOKEN }}`) | Yes                          | -                  |
+| `status`         | Deployment status: `building`, `failed`, or `successful`               | Yes                          | -                  |
+| `deployment-url` | The URL of the deployed application                                    | Only for `successful` status | -                  |
+| `environment`    | Deployment environment: `production` or `preview`                      | No                           | `preview`          |
+| `project-name`   | Name of the project being deployed                                     | No                           | Repository name    |
+| `commit-sha`     | Commit SHA for the deployment                                          | No                           | Current commit SHA |
+
+## Comment Examples
+
+### Building
+
+```
+## 🔍 Vercel Preview Deployment
+
+**My Awesome App** • feature/new-ui • a1b2c3d
+
+⏳ **Building...**
+
+Your deployment is being built. This comment will be updated when the deployment is ready.
+```
+
+### Successful
+
+```
+## 🔍 Vercel Preview Deployment
+
+**My Awesome App** • feature/new-ui • a1b2c3d
+
+✅ **Deployment Successful!**
+
+🔗 **[Visit Deployment](https://my-app-preview.vercel.app)**
+
+---
+
+Deployed with Vercel
+```
+
+### Failed
+
+```
+## 🔍 Vercel Preview Deployment
+
+**My Awesome App** • feature/new-ui • a1b2c3d
+
+❌ **Deployment Failed**
+
+The deployment has failed. Please check the build logs for more information.
+```
+
+## Permissions
+
+Make sure your workflow has the necessary permissions to comment on pull requests:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+```
+
+## Development
+
+### Building
 
 ```bash
 npm install
-```
-
-Key dependencies:
-- `@actions/core` - Core GitHub Actions functionality (inputs, outputs, logging)
-- `@actions/github` - GitHub API client and context
-- `@vercel/ncc` - Bundles your code into a single file for distribution
-
-### 4. Build Your Action
-
-Before using your action, bundle it:
-
-```bash
 npm run build
 ```
 
-This creates `dist/index.js` which contains all your code and dependencies in a single file.
+The action must be built before it can be used. The build process bundles all dependencies into `dist/index.js`.
 
-### 5. Test Your Action
-
-Add tests in `src/*.test.js`:
+### Testing
 
 ```bash
 npm test
 ```
 
-### 6. Use Your Action in a Workflow
+## Tips
 
-```yaml
-steps:
-  - name: Run My Action
-    uses: your-username/your-action@v1
-    with:
-      input-name: 'some value'
-```
+1. **Use Job Dependencies**: Structure your workflow so the "building" comment posts before deployment, and the result comment posts after.
 
-## Key Concepts
+2. **Update in Place**: The action automatically finds and updates existing comments, avoiding comment spam.
 
-### Inputs
-- Defined in `action.yml`
-- Retrieved using `getInput()` in your code
-- Can be required or optional with defaults
+3. **Handle Both Success and Failure**: Always include both success and failure comment steps using `if: success()` and `if: failure()`.
 
-### Outputs
-- Defined in `action.yml`
-- Set using `setOutput()` in your code
-- Available to subsequent workflow steps
-
-### Context
-- Access workflow context via `@actions/github`
-- Includes repo info, event data, actor, etc.
-
-### Error Handling
-- Use `setFailed()` to mark action as failed
-- Always wrap your code in try-catch blocks
-
-## Distribution
-
-GitHub Actions run from the `dist/` folder, not directly from `src/`. Always:
-1. Run `npm run build` after making changes
-2. Commit both `src/` and `dist/` to your repository
-3. Tag releases for version management
-
-## Resources
-
-- [GitHub Actions Documentation](https://docs.github.com/en/actions)
-- [Creating a JavaScript Action](https://docs.github.com/en/actions/creating-actions/creating-a-javascript-action)
-- [@actions/toolkit](https://github.com/actions/toolkit)
+4. **Commit SHA**: The action automatically extracts the commit SHA, but you can override it if needed.
 
 ## License
 
 MIT
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.

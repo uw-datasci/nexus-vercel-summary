@@ -1,33 +1,76 @@
-name: Release and Tag
+name: Release
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      release-type:
+        description: "Release type (auto uses commit messages, or force a specific bump)"
+        required: true
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - major
+          - minor
+          - patch
+      dry-run:
+        description: "Dry run (preview release without publishing)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
 
 jobs:
   release:
+    name: Create Release
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - name: Bump version and push tag
+      - name: Determine Version Bump
+        id: bump_type
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ "${{ inputs.release-type }}" != "auto" ]; then
+            echo "bump=${{ inputs.release-type }}" >> $GITHUB_OUTPUT
+          else
+            echo "bump=auto" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Preview Version (Dry Run)
+        if: ${{ inputs.dry-run }}
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: ${{ steps.bump_type.outputs.bump }}
+          release_branches: main
+          create_annotated_tag: true
+          tag_prefix: v
+          dry_run: true
+
+      - name: Bump Version and Push Tag
+        if: ${{ !inputs.dry-run }}
         id: tag_version
         uses: mathieudutour/github-tag-action@v6.2
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          default_bump: patch
+          default_bump: ${{ steps.bump_type.outputs.bump }}
           release_branches: main
           create_annotated_tag: true
           tag_prefix: v
 
-      - name: Create a GitHub release
+      - name: Create GitHub Release
+        if: ${{ !inputs.dry-run }}
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ steps.tag_version.outputs.new_tag }}
@@ -35,9 +78,11 @@ jobs:
           body: ${{ steps.tag_version.outputs.changelog }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update Major Tag (v1)
-        uses: richardsimko/update-tag@v1
+      - name: Update Major Version Tag
+        if: ${{ !inputs.dry-run }}
+        uses: cssnr/update-version-tags-action@v2
         with:
-          tag_name: v${{ steps.tag_version.outputs.major }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ steps.tag_version.outputs.new_tag }}
+          prefix: v
+          major: true
+          minor: false
