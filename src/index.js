@@ -2,56 +2,51 @@ import { info, getInput, setFailed } from "@actions/core";
 import { context, getOctokit } from "@actions/github";
 
 /**
- * Generate the comment body based on deployment status
+ * Generate the comment body for deployments
  */
-function generateCommentBody(
-  status,
-  deploymentUrl,
-  environment,
-  appName,
-  commitSha
-) {
+function generateCommentBody(deployments, environment, commitSha) {
   const envEmoji = environment === "production" ? "🚀" : "🔍";
   const envName = environment === "production" ? "Production" : "Preview";
-  const appTitle = appName || context.repo.repo;
   const sha = commitSha || context.sha.substring(0, 7);
   const branch = context.ref.replace("refs/heads/", "");
 
-  const header = `## ${envEmoji} Vercel ${envName} Deployment${
-    appName ? ` - ${appName}` : ""
-  }`;
-  const metadata = `**${appTitle}** • ${branch} • ${sha}`;
+  const header = `## ${envEmoji} Vercel ${envName} Deployments`;
+  const metadata = `${branch} • ${sha}`;
 
-  if (status === "building") {
-    return `${header}\n\n${metadata}\n\n⏳ **Building...**\n\nYour deployment is being built. This comment will be updated when the deployment is ready.`;
-  }
+  let body = `${header}\n\n${metadata}\n\n`;
 
-  if (status === "failed") {
-    return `${header}\n\n${metadata}\n\n❌ **Deployment Failed**\n\nThe deployment has failed. Please check the build logs for more information.`;
-  }
+  // Build status for each app
+  deployments.forEach((deployment) => {
+    const name = deployment.name || "App";
+    const status = deployment.status.toLowerCase();
 
-  if (status === "successful") {
-    if (!deploymentUrl) {
-      throw new Error("deployment-url is required when status is successful");
+    if (status === "building") {
+      body += `### ⏳ ${name}\n**Building...**\n\n`;
+    } else if (status === "failed") {
+      body += `### ❌ ${name}\n**Deployment Failed**\n\n`;
+    } else if (status === "successful") {
+      if (deployment.url) {
+        body += `### ✅ ${name}\n🔗 **[Visit Deployment](${deployment.url})**\n\n`;
+      } else {
+        body += `### ✅ ${name}\n**Deployment Successful**\n\n`;
+      }
     }
-    return `${header}\n\n${metadata}\n\n✅ **Deployment Successful!**\n\n🔗 **[Visit Deployment](${deploymentUrl})**\n\n---\n\n<sub>Deployed with [Vercel](https://vercel.com)</sub>`;
-  }
+  });
 
-  throw new Error(
-    `Invalid status: ${status}. Must be one of: building, failed, successful`
-  );
+  body += `---\n\n<sub>Deployed with [Vercel](https://vercel.com)</sub>`;
+
+  return body;
 }
 
 /**
- * Find existing deployment comment for a specific app and environment
+ * Find existing deployment comment
  */
 async function findExistingComment(
   octokit,
   owner,
   repo,
   prNumber,
-  environment,
-  appName
+  environment
 ) {
   try {
     const { data: comments } = await octokit.rest.issues.listComments({
@@ -62,14 +57,10 @@ async function findExistingComment(
 
     const envEmoji = environment === "production" ? "🚀" : "🔍";
     const envName = environment === "production" ? "Production" : "Preview";
-    const searchPattern = `## ${envEmoji} Vercel ${envName} Deployment${
-      appName ? ` - ${appName}` : ""
-    }`;
+    const searchPattern = `## ${envEmoji} Vercel ${envName} Deployments`;
 
-    // Find comment that matches the specific app and environment
-    return comments.find(
-      (comment) => comment.body && comment.body.startsWith(searchPattern)
-    );
+    // Find comment that matches the pattern
+    return comments.find((comment) => comment.body?.startsWith(searchPattern));
   } catch (error) {
     info(`Could not fetch existing comments: ${error.message}`);
     return null;
@@ -83,26 +74,12 @@ async function run() {
   try {
     // Get inputs
     const token = getInput("github-token", { required: true });
-    const status = getInput("status", { required: true }).toLowerCase();
-    const deploymentUrl = getInput("deployment-url");
+    const deploymentsJson = getInput("deployments", { required: true });
     const environment = getInput("environment") || "preview";
-    const appName = getInput("app-name") || getInput("project-name"); // Support both, prefer app-name
     const commitSha = getInput("commit-sha");
 
     info(`Running Nexus Vercel Summary action`);
-    info(`Status: ${status}`);
     info(`Environment: ${environment}`);
-    if (appName) {
-      info(`App: ${appName}`);
-    }
-
-    // Validate status
-    const validStatuses = ["building", "failed", "successful"];
-    if (!validStatuses.includes(status)) {
-      throw new Error(
-        `Invalid status: ${status}. Must be one of: ${validStatuses.join(", ")}`
-      );
-    }
 
     // Only run on pull requests
     if (!context.payload.pull_request) {
@@ -116,26 +93,59 @@ async function run() {
     info(`PR Number: ${prNumber}`);
     info(`Repository: ${owner}/${repo}`);
 
+    // Parse deployments JSON
+    let deployments;
+    try {
+      deployments = JSON.parse(deploymentsJson);
+    } catch (error) {
+      throw new Error(`Invalid deployments JSON: ${error.message}`);
+    }
+
+    if (!Array.isArray(deployments) || deployments.length === 0) {
+      throw new Error("deployments must be a non-empty array");
+    }
+
+    // Validate each deployment
+    deployments.forEach((deployment, index) => {
+      if (!deployment.name) {
+        throw new Error(
+          `Deployment at index ${index} missing required field: name`
+        );
+      }
+      if (!deployment.status) {
+        throw new Error(
+          `Deployment at index ${index} missing required field: status`
+        );
+      }
+      const validStatuses = ["building", "failed", "successful"];
+      if (!validStatuses.includes(deployment.status.toLowerCase())) {
+        throw new Error(
+          `Deployment "${deployment.name}" has invalid status: ${
+            deployment.status
+          }. Must be one of: ${validStatuses.join(", ")}`
+        );
+      }
+    });
+
+    info(`Processing ${deployments.length} deployment(s)`);
+
     // Initialize GitHub client
     const octokit = getOctokit(token);
 
     // Generate comment body
     const commentBody = generateCommentBody(
-      status,
-      deploymentUrl,
+      deployments,
       environment,
-      appName,
       commitSha
     );
 
-    // Find existing comment for this specific app and environment
+    // Find existing comment
     const existingComment = await findExistingComment(
       octokit,
       owner,
       repo,
       prNumber,
-      environment,
-      appName
+      environment
     );
 
     if (existingComment) {

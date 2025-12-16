@@ -9,22 +9,13 @@ inputs:
   github-token:
     description: 'GitHub token for commenting on PRs'
     required: true
-  status:
-    description: 'Deployment status: building, failed, or successful'
+  deployments:
+    description: 'JSON string of deployments: [{"name": "Frontend", "status": "successful", "url": "https://..."}]'
     required: true
-  deployment-url:
-    description: 'The URL of the deployed application (required for successful status)'
-    required: false
   environment:
     description: 'Deployment environment: production or preview'
     required: false
     default: 'preview'
-  app-name:
-    description: 'Name of the app being deployed (use unique names for multiple apps)'
-    required: false
-  project-name:
-    description: 'DEPRECATED: Use app-name instead. Name of the project being deployed'
-    required: false
   commit-sha:
     description: 'Commit SHA for the deployment'
     required: false
