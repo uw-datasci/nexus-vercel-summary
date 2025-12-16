@@ -31662,15 +31662,15 @@ __nccwpck_require__.a(__webpack_module__, async (__webpack_handle_async_dependen
 /**
  * Generate the comment body based on deployment status
  */
-function generateCommentBody(status, deploymentUrl, environment, projectName, commitSha) {
+function generateCommentBody(status, deploymentUrl, environment, appName, commitSha) {
   const envEmoji = environment === 'production' ? '🚀' : '🔍';
   const envName = environment === 'production' ? 'Production' : 'Preview';
-  const projectTitle = projectName || _actions_github__WEBPACK_IMPORTED_MODULE_1__.context.repo.repo;
+  const appTitle = appName || _actions_github__WEBPACK_IMPORTED_MODULE_1__.context.repo.repo;
   const sha = commitSha || _actions_github__WEBPACK_IMPORTED_MODULE_1__.context.sha.substring(0, 7);
   const branch = _actions_github__WEBPACK_IMPORTED_MODULE_1__.context.ref.replace('refs/heads/', '');
 
-  const header = `## ${envEmoji} Vercel ${envName} Deployment`;
-  const metadata = `**${projectTitle}** • ${branch} • ${sha}`;
+  const header = `## ${envEmoji} Vercel ${envName} Deployment${appName ? ` - ${appName}` : ''}`;
+  const metadata = `**${appTitle}** • ${branch} • ${sha}`;
 
   if (status === 'building') {
     return `${header}\n\n${metadata}\n\n⏳ **Building...**\n\nYour deployment is being built. This comment will be updated when the deployment is ready.`;
@@ -31691,9 +31691,9 @@ function generateCommentBody(status, deploymentUrl, environment, projectName, co
 }
 
 /**
- * Find existing deployment comment
+ * Find existing deployment comment for a specific app and environment
  */
-async function findExistingComment(octokit, owner, repo, prNumber) {
+async function findExistingComment(octokit, owner, repo, prNumber, environment, appName) {
   try {
     const { data: comments } = await octokit.rest.issues.listComments({
       owner,
@@ -31701,12 +31701,13 @@ async function findExistingComment(octokit, owner, repo, prNumber) {
       issue_number: prNumber,
     });
 
-    // Find comment that starts with the deployment header
+    const envEmoji = environment === 'production' ? '🚀' : '🔍';
+    const envName = environment === 'production' ? 'Production' : 'Preview';
+    const searchPattern = `## ${envEmoji} Vercel ${envName} Deployment${appName ? ` - ${appName}` : ''}`;
+
+    // Find comment that matches the specific app and environment
     return comments.find(comment => 
-      comment.body && (
-        comment.body.includes('## 🚀 Vercel Production Deployment') ||
-        comment.body.includes('## 🔍 Vercel Preview Deployment')
-      )
+      comment.body && comment.body.startsWith(searchPattern)
     );
   } catch (error) {
     (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.info)(`Could not fetch existing comments: ${error.message}`);
@@ -31724,12 +31725,15 @@ async function run() {
     const status = (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput)("status", { required: true }).toLowerCase();
     const deploymentUrl = (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput)("deployment-url");
     const environment = (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput)("environment") || 'preview';
-    const projectName = (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput)("project-name");
+    const appName = (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput)("app-name") || (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput)("project-name"); // Support both, prefer app-name
     const commitSha = (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.getInput)("commit-sha");
 
-    (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.info)(`Running Vercel deployment status action`);
+    (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.info)(`Running Nexus Vercel Summary action`);
     (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.info)(`Status: ${status}`);
     (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.info)(`Environment: ${environment}`);
+    if (appName) {
+      (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.info)(`App: ${appName}`);
+    }
 
     // Validate status
     const validStatuses = ['building', 'failed', 'successful'];
@@ -31753,10 +31757,10 @@ async function run() {
     const octokit = (0,_actions_github__WEBPACK_IMPORTED_MODULE_1__.getOctokit)(token);
 
     // Generate comment body
-    const commentBody = generateCommentBody(status, deploymentUrl, environment, projectName, commitSha);
+    const commentBody = generateCommentBody(status, deploymentUrl, environment, appName, commitSha);
 
-    // Find existing comment
-    const existingComment = await findExistingComment(octokit, owner, repo, prNumber);
+    // Find existing comment for this specific app and environment
+    const existingComment = await findExistingComment(octokit, owner, repo, prNumber, environment, appName);
 
     if (existingComment) {
       // Update existing comment

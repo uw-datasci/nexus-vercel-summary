@@ -1,180 +1,149 @@
 # Nexus Vercel Summary
 
-A GitHub Action that comments on pull requests with Vercel deployment status updates, similar to the official Vercel bot. Supports building, failed, and successful deployment states.
+A GitHub Action that posts Vercel deployment status comments on pull requests. Supports multiple apps, real-time updates, and Vercel-style formatting.
 
 ## Features
 
-- 🔄 **Real-time Updates**: Comments are updated in-place rather than creating multiple comments
-- 🎨 **Vercel-style Formatting**: Clean, professional comments that match Vercel's UI
-- 🚀 **Production & Preview**: Supports both production and preview deployments
-- 🔗 **Direct Links**: Includes clickable deployment URLs when successful
-- ✅ **Status Indicators**: Clear visual indicators for building, failed, and successful states
+- 🔄 **Real-time Updates** - Comments update in-place, no spam
+- 🎨 **Vercel-style UI** - Clean formatting with emojis
+- 🚀 **Multi-app Support** - Track multiple apps in a single workflow
+- 🔗 **Direct Links** - Clickable deployment URLs
 
-## Usage
+## Quick Start
 
-### Basic Example
+### Single App Deployment
 
 ```yaml
-name: Deploy and Comment
+name: Deploy
 
 on:
   pull_request:
-    branches: [main]
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Comment - Building
-        uses: your-org/nexus-vercel-summary@v1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          status: building
-          environment: preview
-
-      - name: Deploy to Vercel
-        id: deploy
-        run: |
-          # Your deployment logic here
-          DEPLOYMENT_URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
-          echo "url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
-
-      - name: Comment - Successful
-        if: success()
-        uses: your-org/nexus-vercel-summary@v1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          status: successful
-          deployment-url: ${{ steps.deploy.outputs.url }}
-          environment: preview
-
-      - name: Comment - Failed
-        if: failure()
-        uses: your-org/nexus-vercel-summary@v1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          status: failed
-          environment: preview
-```
-
-### Integration with Reusable Workflow
-
-Here's how to integrate with your existing Vercel deployment workflow:
-
-```yaml
-name: Deploy with Status Comments
-
-on:
-  pull_request:
-    branches: [main]
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   comment-building:
-    name: Comment - Building
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
     steps:
-      - name: Post building status
-        uses: your-org/nexus-vercel-summary@v1
+      - uses: nexus/nexus-vercel-summary@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           status: building
-          environment: preview
-          project-name: My Awesome App
 
   deploy:
-    name: Deploy to Vercel
     needs: comment-building
-    uses: ./.github/workflows/vercel-deploy.yml
-    with:
-      node-version: 20
-      pnpm-version: "9.0.0"
-      is-prod: false
-      infisical-project-slug: my-project
-      infisical-secret-path: /app
-    secrets:
-      INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
-      INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    # Your deployment workflow here
+    outputs:
+      deployment-url: ${{ steps.deploy.outputs.url }}
 
   comment-result:
-    name: Comment - Result
     runs-on: ubuntu-latest
     needs: deploy
-    if: always() && github.event_name == 'pull_request'
+    if: always()
     steps:
-      - name: Post successful status
+      - uses: nexus/nexus-vercel-summary@v1
         if: needs.deploy.result == 'success'
-        uses: your-org/nexus-vercel-summary@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           status: successful
           deployment-url: ${{ needs.deploy.outputs.deployment-url }}
-          environment: preview
-          project-name: My Awesome App
 
-      - name: Post failed status
+      - uses: nexus/nexus-vercel-summary@v1
         if: needs.deploy.result == 'failure'
-        uses: your-org/nexus-vercel-summary@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           status: failed
-          environment: preview
-          project-name: My Awesome App
 ```
 
-### Production Deployment Example
+### Multiple Apps Deployment
+
+To track multiple apps, use the `app-name` input:
 
 ```yaml
-name: Production Deploy
-
-on:
-  push:
-    branches: [main]
-
 jobs:
-  deploy-production:
+  # Frontend deployment
+  frontend-building:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: nexus/nexus-vercel-summary@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          status: building
+          app-name: Frontend
 
-      # ... your deployment steps ...
+  deploy-frontend:
+    needs: frontend-building
+    # Deploy frontend
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
 
-      - name: Comment on merged PR
-        uses: your-org/nexus-vercel-summary@v1
+  frontend-result:
+    needs: deploy-frontend
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: nexus/nexus-vercel-summary@v1
+        if: needs.deploy-frontend.result == 'success'
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           status: successful
-          deployment-url: https://your-app.com
-          environment: production
-          project-name: My Production App
+          deployment-url: ${{ needs.deploy-frontend.outputs.url }}
+          app-name: Frontend
+
+  # Backend deployment (parallel)
+  backend-building:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: nexus/nexus-vercel-summary@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          status: building
+          app-name: Backend
+
+  deploy-backend:
+    needs: backend-building
+    # Deploy backend
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+
+  backend-result:
+    needs: deploy-backend
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: nexus/nexus-vercel-summary@v1
+        if: needs.deploy-backend.result == 'success'
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          status: successful
+          deployment-url: ${{ needs.deploy-backend.outputs.url }}
+          app-name: Backend
 ```
+
+This creates separate comments for each app:
+- `## 🔍 Vercel Preview Deployment - Frontend`
+- `## 🔍 Vercel Preview Deployment - Backend`
 
 ## Inputs
 
-| Input            | Description                                                            | Required                     | Default            |
-| ---------------- | ---------------------------------------------------------------------- | ---------------------------- | ------------------ |
-| `github-token`   | GitHub token for commenting on PRs (use `${{ secrets.GITHUB_TOKEN }}`) | Yes                          | -                  |
-| `status`         | Deployment status: `building`, `failed`, or `successful`               | Yes                          | -                  |
-| `deployment-url` | The URL of the deployed application                                    | Only for `successful` status | -                  |
-| `environment`    | Deployment environment: `production` or `preview`                      | No                           | `preview`          |
-| `project-name`   | Name of the project being deployed                                     | No                           | Repository name    |
-| `commit-sha`     | Commit SHA for the deployment                                          | No                           | Current commit SHA |
+| Input            | Description                                    | Required                     | Default         |
+| ---------------- | ---------------------------------------------- | ---------------------------- | --------------- |
+| `github-token`   | GitHub token (use `${{ secrets.GITHUB_TOKEN }}`) | Yes                          | -               |
+| `status`         | `building`, `failed`, or `successful`          | Yes                          | -               |
+| `deployment-url` | URL of deployed app                            | Only for `successful`        | -               |
+| `environment`    | `production` or `preview`                      | No                           | `preview`       |
+| `app-name`       | App name (for multi-app workflows)             | No                           | Repository name |
+| `commit-sha`     | Commit SHA                                     | No                           | Current SHA     |
 
 ## Comment Examples
 
 ### Building
-
 ```
-## 🔍 Vercel Preview Deployment
+## 🔍 Vercel Preview Deployment - Frontend
 
-**My Awesome App** • feature/new-ui • a1b2c3d
+**Frontend** • feature-branch • a1b2c3d
 
 ⏳ **Building...**
 
@@ -182,15 +151,14 @@ Your deployment is being built. This comment will be updated when the deployment
 ```
 
 ### Successful
-
 ```
-## 🔍 Vercel Preview Deployment
+## 🔍 Vercel Preview Deployment - Frontend
 
-**My Awesome App** • feature/new-ui • a1b2c3d
+**Frontend** • feature-branch • a1b2c3d
 
 ✅ **Deployment Successful!**
 
-🔗 **[Visit Deployment](https://my-app-preview.vercel.app)**
+🔗 **[Visit Deployment](https://frontend-preview.vercel.app)**
 
 ---
 
@@ -198,20 +166,52 @@ Deployed with Vercel
 ```
 
 ### Failed
-
 ```
-## 🔍 Vercel Preview Deployment
+## 🔍 Vercel Preview Deployment - Frontend
 
-**My Awesome App** • feature/new-ui • a1b2c3d
+**Frontend** • feature-branch • a1b2c3d
 
 ❌ **Deployment Failed**
 
 The deployment has failed. Please check the build logs for more information.
 ```
 
+## Advanced Usage
+
+### Production Deployments
+
+```yaml
+- uses: nexus/nexus-vercel-summary@v1
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    status: successful
+    deployment-url: https://app.com
+    environment: production
+```
+
+### Dynamic Environment
+
+```yaml
+environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
+```
+
+### Custom Commit SHA
+
+```yaml
+commit-sha: ${{ github.event.pull_request.head.sha }}
+```
+
+## How It Works
+
+1. **Building phase** - Posts initial comment with "Building..." status
+2. **Deployment runs** - Your Vercel deployment executes
+3. **Result phase** - Updates same comment with success/failure
+
+Each app gets its own comment tracked by `app-name` + `environment`, so multiple apps can deploy simultaneously without conflicts.
+
 ## Permissions
 
-Make sure your workflow has the necessary permissions to comment on pull requests:
+Required in your workflow:
 
 ```yaml
 permissions:
@@ -219,37 +219,21 @@ permissions:
   pull-requests: write
 ```
 
-## Development
+## Troubleshooting
 
-### Building
+**Comment not appearing?**
+- Verify `pull-requests: write` permission is set
+- Ensure running on a `pull_request` event
+- Check `GITHUB_TOKEN` is passed correctly
 
-```bash
-npm install
-npm run build
-```
+**Multiple comments created?**
+- Keep `app-name` and `environment` consistent across building/result steps
+- Each unique `app-name` + `environment` combo creates a separate comment
 
-The action must be built before it can be used. The build process bundles all dependencies into `dist/index.js`.
-
-### Testing
-
-```bash
-npm test
-```
-
-## Tips
-
-1. **Use Job Dependencies**: Structure your workflow so the "building" comment posts before deployment, and the result comment posts after.
-
-2. **Update in Place**: The action automatically finds and updates existing comments, avoiding comment spam.
-
-3. **Handle Both Success and Failure**: Always include both success and failure comment steps using `if: success()` and `if: failure()`.
-
-4. **Commit SHA**: The action automatically extracts the commit SHA, but you can override it if needed.
+**Deployment URL missing?**
+- Verify your deploy job outputs `deployment-url`
+- Check the output reference matches your workflow
 
 ## License
 
 MIT
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.

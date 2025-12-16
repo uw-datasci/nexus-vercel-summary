@@ -19,8 +19,11 @@ inputs:
     description: 'Deployment environment: production or preview'
     required: false
     default: 'preview'
+  app-name:
+    description: 'Name of the app being deployed (use unique names for multiple apps)'
+    required: false
   project-name:
-    description: 'Name of the project being deployed'
+    description: 'DEPRECATED: Use app-name instead. Name of the project being deployed'
     required: false
   commit-sha:
     description: 'Commit SHA for the deployment'
